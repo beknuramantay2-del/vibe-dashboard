@@ -1,8 +1,8 @@
 # vibe-dashboard
 
-Real-time TUI dashboard for monitoring AI coding agents — Claude Code, OpenCode, Codex CLI.
+Real-time TUI dashboard for monitoring AI coding agents (Claude Code, OpenCode, Codex CLI).
 
-Track sessions, tokens, costs, cache hit rates, file diffs, and rollback changes — all in your terminal.
+Track sessions, tokens, costs, cache hit rates, file diffs, and rollback changes inside your terminal.
 
 ## Features
 

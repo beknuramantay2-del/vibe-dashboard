@@ -52,7 +52,7 @@ func (ct *CostTracker) Render(totalCost, totalInput, totalOutput, cacheRate floa
 	} else if cacheRate > 50 {
 		b.WriteString(warnStyle.Render("  ⚠ Cache could be improved\n"))
 	} else {
-		b.WriteString(errorStyle.Render("  ✗ Low cache hit rate — enable caching!\n"))
+		b.WriteString(errorStyle.Render("  ✗ Low cache hit rate: enable caching!\n"))
 	}
 
 	b.WriteString("\n" + sectionStyle.Render("BURN RATE") + "\n\n")

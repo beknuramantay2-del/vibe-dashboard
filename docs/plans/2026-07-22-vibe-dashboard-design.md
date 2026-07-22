@@ -1,8 +1,8 @@
-# vibe-dashboard — Design Document
+# vibe-dashboard: Design Document
 
 ## Overview
 
-vibe-dashboard is a cross-platform TUI (Terminal User Interface) that provides real-time monitoring and control of AI coding agents (Claude Code, OpenCode, Codex CLI). It displays active sessions, token/cost burn rates, file diffs, and supports rollback — all in one terminal dashboard.
+vibe-dashboard is a cross-platform TUI (Terminal User Interface) that provides real-time monitoring and control of AI coding agents (Claude Code, OpenCode, Codex CLI). It displays active sessions, token/cost burn rates, file diffs, and supports rollback: all in one terminal dashboard.
 
 ## Architecture
 
@@ -17,9 +17,9 @@ vibe-dashboard is a cross-platform TUI (Terminal User Interface) that provides r
 
 ### Data Sources
 
-1. **Claude Code** — JSONL logs at `~/.claude/projects/**/*.jsonl`
-2. **OpenCode** — SQLite database at `~/.opencode/opencode.db` (or deprecated JSON at `~/.local/share/opencode/storage/session/global/*.json`)
-3. **Codex CLI** — JSONL logs at `~/.codex/logs/**/*.jsonl`
+1. **Claude Code**: JSONL logs at `~/.claude/projects/**/*.jsonl`
+2. **OpenCode**: SQLite database at `~/.opencode/opencode.db` (or deprecated JSON at `~/.local/share/opencode/storage/session/global/*.json`)
+3. **Codex CLI**: JSONL logs at `~/.codex/logs/**/*.jsonl`
 
 Each source has a unified `SourceReader` interface.
 
@@ -49,13 +49,13 @@ Aggregated data lives in `~/.vibe-dashboard/vibe.db` (SQLite). This enables:
 
 ### Key Features
 
-- **Real-time burn rate** — fsnotify on JSONL + 500ms polling on SQLite
-- **Multi-agent support** — unified view of all AI coding sessions
-- **Cache hit rate** — color-coded (green > 80%, amber > 50%, red < 50%)
-- **Diff viewer** — side-by-side or unified diff of changed files
-- **Rollback** — git-based snapshot restore (one-key undo)
-- **Budget alerts** — customizable thresholds with color warnings
-- **Cross-platform** — pure Go, SQLite without CGO, static binary
+- **Real-time burn rate**: fsnotify on JSONL + 500ms polling on SQLite
+- **Multi-agent support**: unified view of all AI coding sessions
+- **Cache hit rate**: color-coded (green > 80%, amber > 50%, red < 50%)
+- **Diff viewer**: side-by-side or unified diff of changed files
+- **Rollback**: git-based snapshot restore (one-key undo)
+- **Budget alerts**: customizable thresholds with color warnings
+- **Cross-platform**: pure Go, SQLite without CGO, static binary
 
 ### Error Handling
 
@@ -73,20 +73,20 @@ Aggregated data lives in `~/.vibe-dashboard/vibe.db` (SQLite). This enables:
 
 ## Implementation Plan
 
-### Phase 1 (v0.1) — Must Have
+### Phase 1 (v0.1): Must Have
 - Project setup, go.mod, CI
 - Source readers for Claude Code + OpenCode + Codex
 - Store layer (SQLite)
 - Basic TUI: sessions list + token/cost view
 - File watchers for real-time updates
 
-### Phase 2 (v0.2) — Should Have
+### Phase 2 (v0.2): Should Have
 - Diff viewer with go-diff
 - Rollback system
 - Per-project history
 - Session kill (SIGTERM)
 
-### Phase 3 (v0.3) — Nice to Have
+### Phase 3 (v0.3): Nice to Have
 - Budget limits with auto-stop
 - Report export (Markdown/CSV)
 - Team mode (shared SQLite)
