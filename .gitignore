@@ -1,0 +1,28 @@
+# Binaries
+vibe-dashboard
+vibe-dashboard.exe
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go
+*.test
+*.out
+go.work
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Vibe Dashboard
+vibe-dashboard.log
+~/.vibe-dashboard/
