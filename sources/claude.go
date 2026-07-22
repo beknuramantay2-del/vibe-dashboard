@@ -8,12 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 )
 
+// ClaudeReader reads Claude Code JSONL session logs.
 type ClaudeReader struct {
-	baseDir string
-	mu      sync.RWMutex
+	baseDir  string
+	mu       sync.RWMutex
 	sessions map[string]*Session
 }
 
@@ -33,12 +35,21 @@ type claudeLogEntry struct {
 	PID     int     `json:"pid,omitempty"`
 }
 
+const (
+	maxFileSize    = 100 * 1024 * 1024 // 100 MB
+	maxLogEntries  = 100_000
+	scanBufferSize = 1024 * 1024
+)
+
 func NewClaudeReader() (*ClaudeReader, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("home dir: %w", err)
 	}
 	base := filepath.Join(home, ".claude", "projects")
+	if _, err := os.Stat(base); os.IsNotExist(err) {
+		return nil, fmt.Errorf("claude projects dir not found: %s", base)
+	}
 	return &ClaudeReader{
 		baseDir:  base,
 		sessions: make(map[string]*Session),
@@ -47,12 +58,34 @@ func NewClaudeReader() (*ClaudeReader, error) {
 
 func (c *ClaudeReader) Name() string { return "Claude Code" }
 
+// Refresh scans all JSONL files under the Claude projects directory.
+func (c *ClaudeReader) Refresh() error {
+	files, err := filepath.Glob(filepath.Join(c.baseDir, "**", "*.jsonl"))
+	if err != nil {
+		return fmt.Errorf("glob claude logs: %w", err)
+	}
+	// Also try one level deeper
+	deeper, _ := filepath.Glob(filepath.Join(c.baseDir, "**", "**", "*.jsonl"))
+	files = append(files, deeper...)
+
+	// Deduplicate
+	seen := make(map[string]bool, len(files))
+	for _, f := range files {
+		if !seen[f] {
+			seen[f] = true
+			c.parseJSONL(f)
+		}
+	}
+	return nil
+}
+
 func (c *ClaudeReader) ListSessions() ([]Session, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	sessions := make([]Session, 0, len(c.sessions))
 	for _, s := range c.sessions {
+		s.ComputeDuration()
 		sessions = append(sessions, *s)
 	}
 	return sessions, nil
@@ -65,10 +98,12 @@ func (c *ClaudeReader) GetSession(id string) (*Session, error) {
 	if !ok {
 		return nil, fmt.Errorf("session %s not found", id)
 	}
+	s.ComputeDuration()
 	return s, nil
 }
 
 func (c *ClaudeReader) GetFileChanges(sessionID string) ([]FileChange, error) {
+	// Claude Code doesn't expose file changes in its JSONL logs
 	return nil, nil
 }
 
@@ -77,25 +112,26 @@ func (c *ClaudeReader) KillSession(id string) error {
 	s, ok := c.sessions[id]
 	if !ok {
 		c.mu.RUnlock()
-		return fmt.Errorf("session not found")
+		return fmt.Errorf("session %q not found", id)
 	}
 	pid := s.PID
-	if pid <= 0 {
-		c.mu.RUnlock()
-		return fmt.Errorf("invalid PID for session")
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		c.mu.RUnlock()
-		return fmt.Errorf("process not found")
-	}
 	c.mu.RUnlock()
 
-	return proc.Signal(os.Interrupt)
-}
+	if pid <= 0 {
+		return fmt.Errorf("no valid PID for session %q", id)
+	}
 
-func (c *ClaudeReader) Watch(callback func(Session)) error {
-	return nil
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("process %d not found: %w", pid, err)
+	}
+
+	// Verify the process is still running before sending signal
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		return fmt.Errorf("process %d not running: %w", pid, err)
+	}
+
+	return proc.Signal(os.Interrupt)
 }
 
 func (c *ClaudeReader) parseJSONL(path string) {
@@ -103,25 +139,28 @@ func (c *ClaudeReader) parseJSONL(path string) {
 	if err != nil {
 		return
 	}
-	if fi.Size() > 100*1024*1024 {
-		log.Printf("claude: skipping %s (size %d exceeds 100MB limit)", path, fi.Size())
+	if fi.Size() > maxFileSize {
+		log.Printf("claude: skipping %s (%.1f MB exceeds limit)", path, float64(fi.Size())/(1024*1024))
 		return
 	}
 
 	f, err := os.Open(path)
 	if err != nil {
+		log.Printf("claude: cannot open %s: %v", path, err)
 		return
 	}
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, scanBufferSize), scanBufferSize)
+
 	var entries int
-	const maxEntries = 100000
 	for scanner.Scan() {
-		if entries >= maxEntries {
+		if entries >= maxLogEntries {
+			log.Printf("claude: reached %d entry limit in %s", maxLogEntries, path)
 			break
 		}
+
 		var entry claudeLogEntry
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
 			continue
@@ -135,7 +174,8 @@ func (c *ClaudeReader) parseJSONL(path string) {
 		if !exists {
 			s = &Session{
 				ID:        entry.SessionID,
-				Agent:     "claude",
+				Agent:     "Claude Code",
+				Status:    "active",
 				StartTime: entry.Timestamp,
 			}
 			c.sessions[entry.SessionID] = s
@@ -143,27 +183,21 @@ func (c *ClaudeReader) parseJSONL(path string) {
 		if entry.Project != "" {
 			s.Project = entry.Project
 		}
-		if entry.Status != "" {
-			s.Status = entry.Status
-		}
 		if entry.Tokens != nil {
 			s.InputTokens += entry.Tokens.Input
 			s.OutputTokens += entry.Tokens.Output
 			s.CacheTokens += entry.Tokens.Cache
-			total := s.InputTokens + s.OutputTokens
-			if total > 0 {
-				s.CacheHitRate = float64(s.CacheTokens) / float64(total) * 100
-			}
+			s.ComputeCacheHitRate()
 		}
 		if entry.Cost > 0 {
-			s.Cost = entry.Cost
+			s.Cost += entry.Cost
 		}
 		if entry.PID > 0 {
 			s.PID = entry.PID
 		}
-		s.Duration = time.Since(s.StartTime)
 		if entry.Status == "completed" || entry.Status == "terminated" {
 			s.Status = "completed"
+			s.EndTime = entry.Timestamp
 		}
 		c.mu.Unlock()
 		entries++

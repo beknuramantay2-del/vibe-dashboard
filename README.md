@@ -6,14 +6,20 @@ Track sessions, tokens, costs, cache hit rates, file diffs, and rollback changes
 
 ## Features
 
-- Multi-agent monitoring (Claude Code + OpenCode + Codex CLI in one window)
-- Real-time burn rate and cost tracking
-- Cache hit rate visualization (color-coded)
-- Session list with active/recent history
-- Diff viewer for changed files
-- One-key rollback via git stash
-- Dark/light theme toggle
-- Cross-platform (Windows, macOS, Linux)
+- **Multi-agent monitoring** — Claude Code + OpenCode + Codex CLI in one window
+- **Real-time updates** — 3-second polling with live session status
+- **Cost tracking** — Per-session and aggregated cost with burn rate
+- **Cache hit rate** — Color-coded visualization (green/amber/red)
+- **Session management** — Search, filter (active/done), sort by any column
+- **Session kill** — Terminate active agent processes with one click
+- **Diff viewer** — Before/after text comparison with line numbers
+- **Rollback** — Git stash-based snapshots: create, restore, delete
+- **Dark/light theme** — Toggle with localStorage persistence
+- **Cross-platform** — Windows, macOS, Linux
+
+## Screenshots
+
+_Coming soon_
 
 ## Installation
 
@@ -35,8 +41,8 @@ go install github.com/wailsapp/wails/v2/cmd/wails@latest
 # Build
 wails build
 
-# Binary is at build/bin/vibe-desktop.exe (Windows)
-# or build/bin/vibe-dashboard (macOS/Linux)
+# Binary is at build/bin/vibe-wails.exe (Windows)
+# or build/bin/vibe-wails (macOS/Linux)
 ```
 
 ## Development
@@ -49,7 +55,7 @@ wails dev
 ## Data Sources
 
 | Agent | Data Source | Detection |
-|-------|------------|-----------|
+|-------|-----------|-----------|
 | Claude Code | `~/.claude/projects/**/*.jsonl` | Auto |
 | OpenCode | `~/.opencode/opencode.db` | Auto |
 | Codex CLI | `~/.codex/logs/**/*.jsonl` | Auto |
@@ -58,25 +64,41 @@ wails dev
 
 ```
 vibe-dashboard/
-├── main.go               # Wails entry point
-├── app.go                # Backend bindings (sessions, cost, kill, rollback)
-├── sources/              # Agent data readers
-│   ├── claude.go         # Claude Code JSONL parser
-│   ├── opencode.go       # OpenCode SQLite reader
-│   └── codex.go          # Codex CLI JSONL parser
-├── frontend/             # Svelte desktop UI
+├── main.go                    # Wails entry point
+├── app.go                     # Backend bindings (sessions, cost, kill, rollback)
+├── sources/                   # Agent data readers
+│   ├── interface.go           # SourceReader interface + Session/FileChange types
+│   ├── claude.go              # Claude Code JSONL parser
+│   ├── opencode.go            # OpenCode SQLite reader
+│   └── codex.go               # Codex CLI JSONL parser
+├── store/                     # Local SQLite store for aggregation
+│   └── db.go
+├── rollback/                  # Git stash-based snapshot system
+│   └── snapshot.go
+├── frontend/                  # Svelte desktop UI
 │   └── src/
-│       ├── App.svelte         # Root layout
+│       ├── App.svelte              # Root layout + state management
+│       ├── style.css               # Global styles + theme variables
 │       └── lib/
-│           ├── Sidebar.svelte       # Navigation + agent list
-│           ├── SessionList.svelte   # Session table with filters
-│           ├── SessionDetail.svelte # Session info + actions
-│           ├── DiffViewer.svelte    # Before/after diff
-│           └── ConfigPanel.svelte   # Theme + agent info
-├── store/                # Local SQLite store
-├── rollback/             # Git-based rollback
-└── docs/plans/           # Design documents
+│           ├── Sidebar.svelte      # Navigation + agent list + cost
+│           ├── SessionList.svelte  # Sortable session table with search
+│           ├── SessionDetail.svelte # Stats, file changes, kill, snapshot
+│           ├── DiffViewer.svelte   # Before/after text diff
+│           ├── SnapshotPanel.svelte # Rollback snapshot management
+│           ├── ConfigPanel.svelte  # Theme, agents, data sources
+│           └── Toast.svelte        # Toast notification system
+├── docs/plans/                # Design documents
+├── wails.json                 # Wails configuration
+├── go.mod                     # Go module
+└── Makefile                   # Build commands
 ```
+
+## Storage
+
+All data is stored locally at `~/.vibe-dashboard/`:
+- `vibe.db` — Aggregated session database
+- `snapshots/` — Rollback snapshot metadata
+- `vibe-desktop.log` — Application logs
 
 ## License
 

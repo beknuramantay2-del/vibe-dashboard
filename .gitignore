@@ -1,6 +1,8 @@
 # Binaries
 vibe-dashboard
 vibe-dashboard.exe
+vibe-wails
+vibe-wails.exe
 *.exe
 *.exe~
 *.dll
@@ -23,11 +25,12 @@ go.work
 .DS_Store
 Thumbs.db
 
-# Vibe Dashboard
+# Vibe Dashboard data
 vibe-dashboard.log
 ~/.vibe-dashboard/
 
-# Frontend
+# Frontend build output
+frontend/dist/
 frontend/node_modules/
 
 # Wails build

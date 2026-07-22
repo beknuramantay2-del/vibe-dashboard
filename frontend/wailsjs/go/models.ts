@@ -1,14 +1,14 @@
 export namespace main {
-	
+
 	export class FileChangeDTO {
 	    path: string;
 	    additions: number;
 	    deletions: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new FileChangeDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.path = source["path"];
@@ -16,6 +16,22 @@ export namespace main {
 	        this.deletions = source["deletions"];
 	    }
 	}
+
+	export class ResultDTO {
+	    ok: boolean;
+	    message: string;
+
+	    static createFrom(source: any = {}) {
+	        return new ResultDTO(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.message = source["message"];
+	    }
+	}
+
 	export class SessionDTO {
 	    id: string;
 	    agent: string;
@@ -28,11 +44,11 @@ export namespace main {
 	    duration: string;
 	    startTime: string;
 	    pid: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SessionDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -48,16 +64,17 @@ export namespace main {
 	        this.pid = source["pid"];
 	    }
 	}
+
 	export class SnapshotDTO {
 	    id: string;
 	    sessionId: string;
 	    message: string;
 	    createdAt: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SnapshotDTO(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -68,4 +85,3 @@ export namespace main {
 	}
 
 }
-

@@ -14,10 +14,12 @@ import (
 	"github.com/vibe-dashboard/vibe-dashboard/sources"
 )
 
+// Store persists aggregated session data to a local SQLite database.
 type Store struct {
 	db *sql.DB
 }
 
+// NewStore creates a store at ~/.vibe-dashboard/vibe.db.
 func NewStore() (*Store, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -25,7 +27,7 @@ func NewStore() (*Store, error) {
 	}
 
 	dir := filepath.Join(home, ".vibe-dashboard")
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
 
@@ -83,6 +85,7 @@ func (s *Store) migrate() error {
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time)`,
 		`CREATE INDEX IF NOT EXISTS idx_file_changes_session ON file_changes(session_id)`,
 	}
 
@@ -94,6 +97,7 @@ func (s *Store) migrate() error {
 	return nil
 }
 
+// SaveSession upserts a session record.
 func (s *Store) SaveSession(ses sources.Session) error {
 	_, err := s.db.Exec(`
 		INSERT INTO sessions (id, agent, project, status, start_time, duration_seconds, cost, input_tokens, output_tokens, cache_tokens, cache_hit_rate)
@@ -112,6 +116,7 @@ func (s *Store) SaveSession(ses sources.Session) error {
 	return err
 }
 
+// SaveFileChanges saves a batch of file changes for a session.
 func (s *Store) SaveFileChanges(sessionID string, changes []sources.FileChange) error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -136,6 +141,7 @@ func (s *Store) SaveFileChanges(sessionID string, changes []sources.FileChange) 
 	return tx.Commit()
 }
 
+// GetSessions retrieves sessions filtered by agent, with a limit.
 func (s *Store) GetSessions(agent string, limit int) ([]sources.Session, error) {
 	if limit <= 0 {
 		limit = 50
@@ -146,13 +152,13 @@ func (s *Store) GetSessions(agent string, limit int) ([]sources.Session, error) 
 	if agent != "" {
 		rows, err = s.db.Query(`
 			SELECT id, agent, project, status, start_time, duration_seconds,
-				   cost, input_tokens, output_tokens, cache_tokens, cache_hit_rate
+			       cost, input_tokens, output_tokens, cache_tokens, cache_hit_rate
 			FROM sessions WHERE agent = ? ORDER BY start_time DESC LIMIT ?
 		`, agent, limit)
 	} else {
 		rows, err = s.db.Query(`
 			SELECT id, agent, project, status, start_time, duration_seconds,
-				   cost, input_tokens, output_tokens, cache_tokens, cache_hit_rate
+			       cost, input_tokens, output_tokens, cache_tokens, cache_hit_rate
 			FROM sessions ORDER BY start_time DESC LIMIT ?
 		`, limit)
 	}
@@ -165,65 +171,67 @@ func (s *Store) GetSessions(agent string, limit int) ([]sources.Session, error) 
 	for rows.Next() {
 		var ses sources.Session
 		var startStr string
+		var durationSec float64
 		err := rows.Scan(&ses.ID, &ses.Agent, &ses.Project, &ses.Status, &startStr,
-			&ses.Duration, &ses.Cost, &ses.InputTokens, &ses.OutputTokens,
+			&durationSec, &ses.Cost, &ses.InputTokens, &ses.OutputTokens,
 			&ses.CacheTokens, &ses.CacheHitRate)
 		if err != nil {
-			log.Printf("store: row scan failed: %v", err)
+			log.Printf("store: row scan: %v", err)
 			continue
 		}
-		parsed, err := time.Parse("2006-01-02T15:04:05Z", startStr)
-		if err != nil {
-			log.Printf("store: bad timestamp %q for session %s: %v", startStr, ses.ID, err)
-			continue
+
+		// Parse start time with multiple format attempts
+		for _, layout := range []string{
+			time.RFC3339,
+			"2006-01-02T15:04:05Z",
+			"2006-01-02 15:04:05",
+		} {
+			if parsed, e := time.Parse(layout, startStr); e == nil {
+				ses.StartTime = parsed
+				break
+			}
 		}
-		ses.StartTime = parsed
+
+		ses.Duration = time.Duration(durationSec * float64(time.Second))
 		sessions = append(sessions, ses)
 	}
-	return sessions, nil
+	return sessions, rows.Err()
 }
 
+// GetAggregatedCost returns total cost, optionally filtered by hours and agent.
 func (s *Store) GetAggregatedCost(hours int, agent string) (float64, error) {
 	if s.db == nil {
 		return 0, errors.New("store not initialized")
 	}
 
-	var total float64
-	if agent != "" && hours > 0 {
-		row := s.db.QueryRow(`
-			SELECT COALESCE(SUM(cost), 0) FROM sessions 
-			WHERE start_time > datetime('now', '-' || ? || ' hours') AND agent = ?
-		`, hours, agent)
-		if err := row.Scan(&total); err != nil {
-			return 0, err
-		}
-	} else if hours > 0 {
-		row := s.db.QueryRow(`
-			SELECT COALESCE(SUM(cost), 0) FROM sessions 
-			WHERE start_time > datetime('now', '-' || ? || ' hours')
-		`, hours)
-		if err := row.Scan(&total); err != nil {
-			return 0, err
-		}
-	} else if agent != "" {
-		row := s.db.QueryRow(`
-			SELECT COALESCE(SUM(cost), 0) FROM sessions WHERE agent = ?
-		`, agent)
-		if err := row.Scan(&total); err != nil {
-			return 0, err
-		}
-	} else {
-		row := s.db.QueryRow(`SELECT COALESCE(SUM(cost), 0) FROM sessions`)
-		if err := row.Scan(&total); err != nil {
-			return 0, err
-		}
+	var query string
+	var args []interface{}
+
+	switch {
+	case agent != "" && hours > 0:
+		query = `SELECT COALESCE(SUM(cost), 0) FROM sessions WHERE start_time > datetime('now', '-' || ? || ' hours') AND agent = ?`
+		args = []interface{}{hours, agent}
+	case hours > 0:
+		query = `SELECT COALESCE(SUM(cost), 0) FROM sessions WHERE start_time > datetime('now', '-' || ? || ' hours')`
+		args = []interface{}{hours}
+	case agent != "":
+		query = `SELECT COALESCE(SUM(cost), 0) FROM sessions WHERE agent = ?`
+		args = []interface{}{agent}
+	default:
+		query = `SELECT COALESCE(SUM(cost), 0) FROM sessions`
 	}
 
+	var total float64
+	if err := s.db.QueryRow(query, args...).Scan(&total); err != nil {
+		return 0, err
+	}
 	return total, nil
 }
 
+// ErrClosed is returned when operating on a closed store.
 var ErrClosed = errors.New("store already closed")
 
+// Close closes the underlying database connection.
 func (s *Store) Close() error {
 	if s.db == nil {
 		return ErrClosed

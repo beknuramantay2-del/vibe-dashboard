@@ -6,12 +6,24 @@ export function CreateSnapshot(arg1, arg2) {
   return window['go']['main']['App']['CreateSnapshot'](arg1, arg2);
 }
 
+export function DeleteSnapshot(arg1) {
+  return window['go']['main']['App']['DeleteSnapshot'](arg1);
+}
+
 export function GetAggregatedCost() {
   return window['go']['main']['App']['GetAggregatedCost']();
 }
 
 export function GetConnectedAgents() {
   return window['go']['main']['App']['GetConnectedAgents']();
+}
+
+export function GetCostByAgent(arg1) {
+  return window['go']['main']['App']['GetCostByAgent'](arg1);
+}
+
+export function GetCostByHours(arg1) {
+  return window['go']['main']['App']['GetCostByHours'](arg1);
 }
 
 export function GetFileChanges(arg1, arg2) {

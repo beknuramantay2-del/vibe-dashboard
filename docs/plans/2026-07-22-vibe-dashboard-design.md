@@ -2,92 +2,99 @@
 
 ## Overview
 
-vibe-dashboard is a cross-platform TUI (Terminal User Interface) that provides real-time monitoring and control of AI coding agents (Claude Code, OpenCode, Codex CLI). It displays active sessions, token/cost burn rates, file diffs, and supports rollback: all in one terminal dashboard.
+vibe-dashboard is a cross-platform **desktop application** that provides real-time monitoring and control of AI coding agents (Claude Code, OpenCode, Codex CLI). It displays active sessions, token/cost burn rates, cache hit rates, file diffs, and supports rollback — all in a native desktop window.
 
 ## Architecture
 
 ### Stack
-- **Language:** Go 1.22+
-- **TUI Framework:** Bubble Tea (charm.sh/bubbletea)
-- **UI Components:** Bubbles (charm.sh/bubbles) + Lip Gloss (charm.sh/lipgloss)
-- **Charts:** ntcharts (charm.sh/x/ntcharts)
+- **Backend:** Go 1.25+
+- **Desktop Framework:** Wails v2 (Go backend + webview frontend)
+- **Frontend:** Svelte 5 + Vite
+- **UI Fonts:** Geist Sans + Geist Mono
 - **Database:** SQLite via modernc.org/sqlite (pure Go, no CGO)
-- **File Watching:** fsnotify (github.com/fsnotify/fsnotify)
-- **Diff Library:** github.com/sergi/go-diff
 
 ### Data Sources
 
-1. **Claude Code**: JSONL logs at `~/.claude/projects/**/*.jsonl`
-2. **OpenCode**: SQLite database at `~/.opencode/opencode.db` (or deprecated JSON at `~/.local/share/opencode/storage/session/global/*.json`)
-3. **Codex CLI**: JSONL logs at `~/.codex/logs/**/*.jsonl`
+| Agent | Data Source | Detection |
+|-------|-----------|-----------|
+| Claude Code | `~/.claude/projects/**/*.jsonl` | JSONL parser with file glob |
+| OpenCode | `~/.opencode/opencode.db` | SQLite read-only connection |
+| Codex CLI | `~/.codex/logs/**/*.jsonl` | JSONL parser with file glob |
 
-Each source has a unified `SourceReader` interface.
+Each source implements the `SourceReader` interface with `Refresh()`, `ListSessions()`, `GetSession()`, `GetFileChanges()`, and `KillSession()`.
 
 ### Local Store
 
 Aggregated data lives in `~/.vibe-dashboard/vibe.db` (SQLite). This enables:
 - History across sessions
-- Per-project aggregation
+- Per-project and per-agent cost aggregation
 - Budget tracking over time
 
-### TUI Layout
+### Desktop Layout
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│ Header: logo + tabs (sessions/tokens/diff/config)       │
-├─────────────┬───────────────────┬───────────────────────┤
-│ Sessions    │ Tokens / Cost     │ Files (changed)        │
-│ (active +   │ (burn graph,      │ (modified files per    │
-│  recent)    │  progress bar,    │  selected session)     │
-│             │  cache hit rate)  │                        │
-├─────────────┴───────────────────┴───────────────────────┤
-│ Diff Viewer (bottom panel, shows file diff on [d])      │
-├─────────────────────────────────────────────────────────┤
-│ Status bar: hotkeys help                                │
-└─────────────────────────────────────────────────────────┘
+┌──────────┬──────────────────────────────────────────┐
+│ Sidebar  │  Main Content                             │
+│          │                                           │
+│ Sessions │  Tab: Sessions — sortable table           │
+│ Detail   │  Tab: Detail — stats, file changes, kill  │
+│ Diff     │  Tab: Diff — before/after text compare    │
+│ Snapshots│  Tab: Snapshots — rollback management     │
+│ Config   │  Tab: Config — theme, agents, about       │
+│          │                                           │
+│ Agents   │                                           │
+│ Cost     │                                           │
+│ ⟳  ☀/☾  │                                           │
+└──────────┴──────────────────────────────────────────┘
 ```
 
 ### Key Features
 
-- **Real-time burn rate**: fsnotify on JSONL + 500ms polling on SQLite
+- **Real-time polling**: 3-second refresh cycle with Wails EventsEmit
 - **Multi-agent support**: unified view of all AI coding sessions
-- **Cache hit rate**: color-coded (green > 80%, amber > 50%, red < 50%)
-- **Diff viewer**: side-by-side or unified diff of changed files
-- **Rollback**: git-based snapshot restore (one-key undo)
-- **Budget alerts**: customizable thresholds with color warnings
-- **Cross-platform**: pure Go, SQLite without CGO, static binary
+- **Session sorting**: by agent, cost, tokens, cache hit rate, time
+- **Cache hit rate**: color-coded (green ≥80%, amber ≥50%, red <50%)
+- **Diff viewer**: line-by-line unified diff with line numbers
+- **Rollback**: git stash-based snapshot create/restore/delete
+- **Toast notifications**: success/error/info feedback
+- **Theme toggle**: dark/light with localStorage persistence
+- **Cross-platform**: Windows, macOS, Linux via Wails
 
 ### Error Handling
 
-- Source adapters auto-detect version (SQLite first, fallback to JSON)
-- Graceful degradation if a source is unavailable
-- All TUI state is managed via Bubble Tea's model-update pattern
-- Logging to file via `tea.LogToFile()` (no stdout conflict)
+- Source adapters auto-detect availability; graceful skip if unavailable
+- All frontend-facing methods return `ResultDTO { ok, message }` for error feedback
+- Toast notifications surface errors to the user
+- Backend logs to `~/.vibe-dashboard/vibe-desktop.log`
+- Proper context cancellation on shutdown
 
-### Testing Strategy
+### Security
 
-- Unit tests for each source parser (test fixtures in testdata/)
-- Store tests with in-memory SQLite
-- UI tests with Bubble Tea's testing utilities
-- Integration tests using mock data streams
+- Repo paths validated: absolute, resolved symlinks, verified as git repos
+- PID ownership verified before sending signals
+- Snapshot IDs sanitized to prevent path traversal
+- SQLite queries use parameterized statements
+- File size limits (100MB) and entry limits (100K) on JSONL parsing
 
 ## Implementation Plan
 
-### Phase 1 (v0.1): Must Have
-- Project setup, go.mod, CI
-- Source readers for Claude Code + OpenCode + Codex
+### v0.1 (Complete)
+- Project setup, Wails scaffold
+- Source readers for Claude Code + OpenCode + Codex CLI
 - Store layer (SQLite)
-- Basic TUI: sessions list + token/cost view
-- File watchers for real-time updates
+- Basic desktop UI: sessions list + detail view
 
-### Phase 2 (v0.2): Should Have
-- Diff viewer with go-diff
-- Rollback system
-- Per-project history
-- Session kill (SIGTERM)
+### v0.2 (Current)
+- Fixed critical bugs (readers never refreshing, duration calculation, cache rate)
+- Security hardening (path validation, PID checks, snapshot ID sanitization)
+- Frontend: sorting, search, toast notifications, loading states
+- Snapshot management panel
+- Proper shutdown (context cancellation, store close, log file close)
+- Theme persistence
 
-### Phase 3 (v0.3): Nice to Have
-- Budget limits with auto-stop
+### v0.3 (Planned)
+- Budget limits with configurable thresholds
 - Report export (Markdown/CSV)
-- Team mode (shared SQLite)
-- MCP integration
+- Per-project cost aggregation views
+- Keyboard shortcuts
+- System tray integration

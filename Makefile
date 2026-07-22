@@ -1,28 +1,26 @@
-.PHONY: build run test clean install
+.PHONY: build dev test clean lint
 
-BINARY = vibe-dashboard
-
+# Wails build (production)
 build:
-	go build -o $(BINARY) ./cmd/$(BINARY)
+	wails build
 
-run: build
-	./$(BINARY)
+# Wails dev mode with hot-reload
+dev:
+	wails dev
 
+# Run Go tests
 test:
 	go test ./...
 
+# Clean build artifacts
 clean:
-	rm -f $(BINARY)
-	rm -f $(BINARY).exe
+	rm -rf build/bin/
 	rm -f *.log
 
-install:
-	go install ./cmd/$(BINARY)
-
+# Go vet + lint
 lint:
 	go vet ./...
 
-cross:
-	GOOS=linux GOARCH=amd64 go build -o $(BINARY)-linux-amd64 ./cmd/$(BINARY)
-	GOOS=darwin GOARCH=amd64 go build -o $(BINARY)-darwin-amd64 ./cmd/$(BINARY)
-	GOOS=windows GOARCH=amd64 go build -o $(BINARY)-windows-amd64.exe ./cmd/$(BINARY)
+# Install Wails CLI if not present
+install-wails:
+	go install github.com/wailsapp/wails/v2/cmd/wails@latest

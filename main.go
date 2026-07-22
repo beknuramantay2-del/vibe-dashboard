@@ -37,6 +37,6 @@ func main() {
 	})
 
 	if err != nil {
-		log.Printf("Error: %v", err)
+		log.Fatalf("Fatal: %v", err)
 	}
 }
