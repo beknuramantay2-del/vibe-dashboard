@@ -213,14 +213,6 @@ func (m Model) renderSessions() string {
 }
 
 func renderSessionDetail(s sources.Session) string {
-	total := s.InputTokens + s.OutputTokens
-	var tokensStr string
-	if total > 1000 {
-		tokensStr = fmt.Sprintf("%dk", total/1000)
-	} else {
-		tokensStr = fmt.Sprintf("%d", total)
-	}
-
 	cacheColor := lipgloss.Color("2")
 	if s.CacheHitRate < 50 {
 		cacheColor = lipgloss.Color("1")

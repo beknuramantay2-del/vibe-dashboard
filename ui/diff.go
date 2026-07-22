@@ -5,7 +5,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
@@ -73,5 +72,5 @@ func (d *DiffViewer) renderDiff(before, after string) string {
 func (d *DiffViewer) Update(msg tea.Msg) (DiffViewer, tea.Cmd) {
 	var cmd tea.Cmd
 	d.viewport, cmd = d.viewport.Update(msg)
-	return d, cmd
+	return *d, cmd
 }
