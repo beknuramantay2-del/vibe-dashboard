@@ -3,6 +3,7 @@ package sources
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -57,6 +58,9 @@ func NewOpenCodeReader() (*OpenCodeReader, error) {
 func (o *OpenCodeReader) Name() string { return "OpenCode" }
 
 func (o *OpenCodeReader) loadSessions() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+
 	rows, err := o.db.Query(`
 		SELECT id, project, status, start_time, 
 			   COALESCE(cost, 0), COALESCE(input_tokens, 0), 
@@ -64,6 +68,7 @@ func (o *OpenCodeReader) loadSessions() {
 		FROM sessions ORDER BY start_time DESC LIMIT 100
 	`)
 	if err != nil {
+		log.Printf("opencode: query failed: %v", err)
 		return
 	}
 	defer rows.Close()
@@ -74,6 +79,7 @@ func (o *OpenCodeReader) loadSessions() {
 		err := rows.Scan(&s.ID, &s.Project, &s.Status, &startTime,
 			&s.Cost, &s.InputTokens, &s.OutputTokens, &s.CacheTokens)
 		if err != nil {
+			log.Printf("opencode: row scan failed: %v", err)
 			continue
 		}
 		s.Agent = "opencode"
@@ -134,12 +140,19 @@ func (o *OpenCodeReader) Watch(callback func(Session)) error {
 	defer ticker.Stop()
 
 	for range ticker.C {
+		o.mu.RLock()
 		oldCount := len(o.sessions)
+		o.mu.RUnlock()
 		o.loadSessions()
-		if len(o.sessions) > oldCount {
+		o.mu.RLock()
+		newCount := len(o.sessions)
+		o.mu.RUnlock()
+		if newCount > oldCount {
+			o.mu.RLock()
 			for _, s := range o.sessions {
 				callback(*s)
 			}
+			o.mu.RUnlock()
 		}
 	}
 	return nil

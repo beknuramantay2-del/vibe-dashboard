@@ -46,7 +46,10 @@ func (m *Manager) CreateSnapshot(sessionID string, repoPath string) (*Snapshot, 
 		CreatedAt: time.Now(),
 	}
 
-	msg := fmt.Sprintf("vibe-dashboard: snapshot before session %s", sessionID)
+	sanitizedID := strings.ReplaceAll(sessionID, "\n", " ")
+	sanitizedID = strings.ReplaceAll(sanitizedID, "\r", " ")
+	sanitizedID = strings.ReplaceAll(sanitizedID, "\"", "'")
+	msg := fmt.Sprintf("vibe-dashboard: snapshot before session %s", sanitizedID)
 	cmd := exec.Command("git", "stash", "push", "-m", msg)
 	cmd.Dir = repoPath
 	if err := cmd.Run(); err != nil {
@@ -59,7 +62,10 @@ func (m *Manager) CreateSnapshot(sessionID string, repoPath string) (*Snapshot, 
 		snapshot.ID, snapshot.SessionID, snapshot.CreatedAt.Format(time.RFC3339), msg)
 
 	snapPath := filepath.Join(m.snapshotsDir, snapshot.ID+".snap")
-	if err := os.WriteFile(snapPath, []byte(data), 0644); err != nil {
+	if _, err := os.Lstat(snapPath); err == nil {
+		return nil, fmt.Errorf("snapshot path already exists: %s", snapPath)
+	}
+	if err := os.WriteFile(snapPath, []byte(data), 0600); err != nil {
 		return nil, err
 	}
 
@@ -130,6 +136,9 @@ func (m *Manager) Rollback(snapshotID string, repoPath string) error {
 	for _, line := range lines {
 		if strings.Contains(line, snapshotID) || strings.Contains(line, "vibe-dashboard: snapshot") {
 			stashRef := strings.Split(line, ":")[0]
+			if !strings.HasPrefix(stashRef, "stash@{") {
+				continue
+			}
 			applyCmd := exec.Command("git", "stash", "apply", stashRef)
 			applyCmd.Dir = repoPath
 			if err := applyCmd.Run(); err != nil {

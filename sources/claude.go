@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,13 +78,19 @@ func (c *ClaudeReader) GetFileChanges(sessionID string) ([]FileChange, error) {
 func (c *ClaudeReader) KillSession(id string) error {
 	c.mu.RLock()
 	s, ok := c.sessions[id]
-	c.mu.RUnlock()
 	if !ok {
+		c.mu.RUnlock()
 		return fmt.Errorf("session %s not found", id)
 	}
-	proc, err := os.FindProcess(s.PID)
+	pid := s.PID
+	c.mu.RUnlock()
+
+	if pid <= 0 {
+		return fmt.Errorf("invalid PID %d for session %s", pid, id)
+	}
+	proc, err := os.FindProcess(pid)
 	if err != nil {
-		return err
+		return fmt.Errorf("process %d not found: %w", pid, err)
 	}
 	return proc.Signal(os.Interrupt)
 }
@@ -95,8 +102,14 @@ func (c *ClaudeReader) Watch(callback func(Session)) error {
 	}
 	defer watcher.Close()
 
-	filepath.Walk(c.baseDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+	filepath.WalkDir(c.baseDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if d.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
 		if strings.HasSuffix(path, ".jsonl") {
@@ -114,7 +127,7 @@ func (c *ClaudeReader) Watch(callback func(Session)) error {
 				if !ok {
 					return
 				}
-				if event.Op&(fsnotify.Write|fsnotify.Create) != 0 {
+				if event.Op&(fsnotify.Write|fsnotify.Create) != 0 && strings.HasSuffix(event.Name, ".jsonl") {
 					c.parseJSONL(event.Name)
 				}
 			case err, ok := <-watcher.Errors:
@@ -137,7 +150,13 @@ func (c *ClaudeReader) parseJSONL(path string) {
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
+	var entries int
+	const maxEntries = 100000
 	for scanner.Scan() {
+		if entries >= maxEntries {
+			break
+		}
 		var entry claudeLogEntry
 		if err := json.Unmarshal(scanner.Bytes(), &entry); err != nil {
 			continue
@@ -182,5 +201,6 @@ func (c *ClaudeReader) parseJSONL(path string) {
 			s.Status = "completed"
 		}
 		c.mu.Unlock()
+		entries++
 	}
 }
