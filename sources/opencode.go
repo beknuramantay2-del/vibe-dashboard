@@ -27,15 +27,17 @@ func NewOpenCodeReader() (*OpenCodeReader, error) {
 	paths := []string{
 		filepath.Join(home, ".opencode", "opencode.db"),
 		filepath.Join(home, ".local", "share", "opencode", "opencode.db"),
+		filepath.Join(home, "AppData", "Roaming", "opencode", "opencode.db"),
 	}
 
 	var db *sql.DB
 	for _, p := range paths {
 		if _, err := os.Stat(p); err == nil {
-			db, err = sql.Open("sqlite", p)
+			db, err = sql.Open("sqlite", p+"?mode=ro")
 			if err != nil {
 				continue
 			}
+			db.SetMaxOpenConns(1)
 			if err = db.Ping(); err == nil {
 				break
 			}
@@ -159,6 +161,17 @@ func (o *OpenCodeReader) Watch(callback func(Session)) error {
 }
 
 func (o *OpenCodeReader) KillSession(id string) error {
-	_, err := o.db.Exec("UPDATE sessions SET status = 'terminated' WHERE id = ?", id)
-	return err
+	o.mu.RLock()
+	s, ok := o.sessions[id]
+	o.mu.RUnlock()
+	if !ok {
+		return fmt.Errorf("session not found")
+	}
+	if s.PID > 0 {
+		proc, err := os.FindProcess(s.PID)
+		if err == nil {
+			proc.Signal(os.Interrupt)
+		}
+	}
+	return nil
 }

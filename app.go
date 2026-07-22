@@ -54,13 +54,20 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	home, _ := os.UserHomeDir()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Printf("home dir: %v", err)
+		return
+	}
 	logDir := filepath.Join(home, ".vibe-dashboard")
-	os.MkdirAll(logDir, 0700)
+	if err := os.MkdirAll(logDir, 0700); err != nil {
+		log.Printf("log dir: %v", err)
+	}
 	logPath := filepath.Join(logDir, "vibe-desktop.log")
 	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err == nil {
 		log.SetOutput(logFile)
+		defer logFile.Close()
 	}
 
 	a.store, err = store.NewStore()

@@ -2,7 +2,9 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -28,10 +30,13 @@ func NewStore() (*Store, error) {
 	}
 
 	dbPath := filepath.Join(dir, "vibe.db")
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath+"?_journal_mode=WAL&_busy_timeout=5000")
 	if err != nil {
 		return nil, fmt.Errorf("open store db: %w", err)
 	}
+
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("ping store db: %w", err)
@@ -164,35 +169,66 @@ func (s *Store) GetSessions(agent string, limit int) ([]sources.Session, error) 
 			&ses.Duration, &ses.Cost, &ses.InputTokens, &ses.OutputTokens,
 			&ses.CacheTokens, &ses.CacheHitRate)
 		if err != nil {
+			log.Printf("store: row scan failed: %v", err)
 			continue
 		}
-		ses.StartTime, _ = time.Parse("2006-01-02T15:04:05Z", startStr)
+		parsed, err := time.Parse("2006-01-02T15:04:05Z", startStr)
+		if err != nil {
+			log.Printf("store: bad timestamp %q for session %s: %v", startStr, ses.ID, err)
+			continue
+		}
+		ses.StartTime = parsed
 		sessions = append(sessions, ses)
 	}
 	return sessions, nil
 }
 
 func (s *Store) GetAggregatedCost(hours int, agent string) (float64, error) {
-	var row *sql.Row
-	if agent != "" {
-		row = s.db.QueryRow(`
-			SELECT COALESCE(SUM(cost), 0) FROM sessions 
-			WHERE start_time > datetime('now', ?) AND agent = ?
-		`, fmt.Sprintf("-%d hours", hours), agent)
-	} else {
-		row = s.db.QueryRow(`
-			SELECT COALESCE(SUM(cost), 0) FROM sessions 
-			WHERE start_time > datetime('now', ?)
-		`, fmt.Sprintf("-%d hours", hours))
+	if s.db == nil {
+		return 0, errors.New("store not initialized")
 	}
 
 	var total float64
-	if err := row.Scan(&total); err != nil {
-		return 0, err
+	if agent != "" && hours > 0 {
+		row := s.db.QueryRow(`
+			SELECT COALESCE(SUM(cost), 0) FROM sessions 
+			WHERE start_time > datetime('now', '-' || ? || ' hours') AND agent = ?
+		`, hours, agent)
+		if err := row.Scan(&total); err != nil {
+			return 0, err
+		}
+	} else if hours > 0 {
+		row := s.db.QueryRow(`
+			SELECT COALESCE(SUM(cost), 0) FROM sessions 
+			WHERE start_time > datetime('now', '-' || ? || ' hours')
+		`, hours)
+		if err := row.Scan(&total); err != nil {
+			return 0, err
+		}
+	} else if agent != "" {
+		row := s.db.QueryRow(`
+			SELECT COALESCE(SUM(cost), 0) FROM sessions WHERE agent = ?
+		`, agent)
+		if err := row.Scan(&total); err != nil {
+			return 0, err
+		}
+	} else {
+		row := s.db.QueryRow(`SELECT COALESCE(SUM(cost), 0) FROM sessions`)
+		if err := row.Scan(&total); err != nil {
+			return 0, err
+		}
 	}
+
 	return total, nil
 }
 
+var ErrClosed = errors.New("store already closed")
+
 func (s *Store) Close() error {
-	return s.db.Close()
+	if s.db == nil {
+		return ErrClosed
+	}
+	db := s.db
+	s.db = nil
+	return db.Close()
 }

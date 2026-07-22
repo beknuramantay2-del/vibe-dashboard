@@ -4,14 +4,11 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"io/fs"
+	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/fsnotify/fsnotify"
 )
 
 type ClaudeReader struct {
@@ -80,69 +77,37 @@ func (c *ClaudeReader) KillSession(id string) error {
 	s, ok := c.sessions[id]
 	if !ok {
 		c.mu.RUnlock()
-		return fmt.Errorf("session %s not found", id)
+		return fmt.Errorf("session not found")
 	}
 	pid := s.PID
-	c.mu.RUnlock()
-
 	if pid <= 0 {
-		return fmt.Errorf("invalid PID %d for session %s", pid, id)
+		c.mu.RUnlock()
+		return fmt.Errorf("invalid PID for session")
 	}
 	proc, err := os.FindProcess(pid)
 	if err != nil {
-		return fmt.Errorf("process %d not found: %w", pid, err)
+		c.mu.RUnlock()
+		return fmt.Errorf("process not found")
 	}
+	c.mu.RUnlock()
+
 	return proc.Signal(os.Interrupt)
 }
 
 func (c *ClaudeReader) Watch(callback func(Session)) error {
-	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return err
-	}
-	defer watcher.Close()
-
-	filepath.WalkDir(c.baseDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if d.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-		if strings.HasSuffix(path, ".jsonl") {
-			watcher.Add(path)
-			c.parseJSONL(path)
-		}
-		return nil
-	})
-
-	done := make(chan error)
-	go func() {
-		for {
-			select {
-			case event, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				if event.Op&(fsnotify.Write|fsnotify.Create) != 0 && strings.HasSuffix(event.Name, ".jsonl") {
-					c.parseJSONL(event.Name)
-				}
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				fmt.Fprintf(os.Stderr, "watcher error: %v\n", err)
-			}
-		}
-	}()
-	<-done
 	return nil
 }
 
 func (c *ClaudeReader) parseJSONL(path string) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	if fi.Size() > 100*1024*1024 {
+		log.Printf("claude: skipping %s (size %d exceeds 100MB limit)", path, fi.Size())
+		return
+	}
+
 	f, err := os.Open(path)
 	if err != nil {
 		return
@@ -202,5 +167,9 @@ func (c *ClaudeReader) parseJSONL(path string) {
 		}
 		c.mu.Unlock()
 		entries++
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("claude: scanner error reading %s: %v", path, err)
 	}
 }
