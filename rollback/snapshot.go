@@ -15,6 +15,7 @@ import (
 type Snapshot struct {
 	ID        string    `json:"id"`
 	SessionID string    `json:"session_id"`
+	StashTag  string    `json:"stash_tag"`
 	Message   string    `json:"message"`
 	CreatedAt time.Time `json:"created_at"`
 	Files     []string  `json:"files"`
@@ -47,6 +48,10 @@ func sanitizeSessionID(id string) string {
 
 // validateRepoPath ensures the path is safe: absolute, exists, is a directory, and is a git repo.
 func validateRepoPath(repoPath string) (string, error) {
+	if repoPath == "" {
+		return "", fmt.Errorf("repository path is empty")
+	}
+
 	cleanPath, err := filepath.Abs(repoPath)
 	if err != nil {
 		return "", fmt.Errorf("invalid path: %w", err)
@@ -81,14 +86,17 @@ func (m *Manager) CreateSnapshot(sessionID string, repoPath string) (*Snapshot, 
 	}
 
 	sessionTag := sanitizeSessionID(sessionID)
+	// Use a unique tag in the stash message so we can find exactly this snapshot later
+	stashTag := fmt.Sprintf("vibe-%d", time.Now().UnixNano())
 
 	snapshot := &Snapshot{
 		ID:        fmt.Sprintf("snap_%d", time.Now().UnixNano()),
 		SessionID: sessionID,
+		StashTag:  stashTag,
 		CreatedAt: time.Now(),
 	}
 
-	msg := fmt.Sprintf("vibe-dashboard: snapshot before session %s", sessionTag)
+	msg := fmt.Sprintf("vibe-dashboard [%s]: snapshot before session %s", stashTag, sessionTag)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -99,11 +107,18 @@ func (m *Manager) CreateSnapshot(sessionID string, repoPath string) (*Snapshot, 
 		return nil, fmt.Errorf("git stash: %w (output: %s)", err, strings.TrimSpace(string(output)))
 	}
 
+	outStr := strings.TrimSpace(string(output))
+	// "No local changes to save" means nothing was stashed
+	if strings.Contains(outStr, "No local changes") || strings.Contains(outStr, "No stash entries") {
+		return nil, fmt.Errorf("no local changes to snapshot")
+	}
+
 	snapshot.Message = msg
 
-	// Write snapshot metadata
-	data := fmt.Sprintf("ID=%s\nSession=%s\nTime=%s\nMessage=%s\n",
-		snapshot.ID, sessionTag, snapshot.CreatedAt.Format(time.RFC3339), msg)
+	// Write snapshot metadata with "=" delimiters (safe for RFC3339 timestamps)
+	data := fmt.Sprintf("ID=%s\nSession=%s\nStashTag=%s\nTime=%s\nMessage=%s\nRepoPath=%s\n",
+		snapshot.ID, sessionTag, stashTag,
+		snapshot.CreatedAt.Format(time.RFC3339), msg, cleanPath)
 
 	snapPath := filepath.Join(m.snapshotsDir, snapshot.ID+".snap")
 	if err := os.WriteFile(snapPath, []byte(data), 0600); err != nil {
@@ -138,7 +153,6 @@ func (m *Manager) ListSnapshots() ([]Snapshot, error) {
 }
 
 // parseSnapshot reads key=value formatted snapshot metadata.
-// Uses "=" as delimiter instead of ":" to avoid conflict with RFC3339 timestamps.
 func parseSnapshot(data string) *Snapshot {
 	lines := strings.Split(strings.TrimSpace(data), "\n")
 	if len(lines) < 3 {
@@ -148,23 +162,6 @@ func parseSnapshot(data string) *Snapshot {
 	for _, line := range lines {
 		idx := strings.IndexByte(line, '=')
 		if idx < 0 {
-			// Fallback: try ":" delimiter for old-format snapshots
-			idx = strings.IndexByte(line, ':')
-			if idx < 0 {
-				continue
-			}
-			key := strings.TrimSpace(line[:idx])
-			val := strings.TrimSpace(line[idx+1:])
-			switch key {
-			case "ID":
-				s.ID = val
-			case "Session":
-				s.SessionID = val
-			case "Time":
-				s.CreatedAt, _ = time.Parse(time.RFC3339, val)
-			case "Message":
-				s.Message = val
-			}
 			continue
 		}
 		key := strings.TrimSpace(line[:idx])
@@ -174,6 +171,8 @@ func parseSnapshot(data string) *Snapshot {
 			s.ID = val
 		case "Session":
 			s.SessionID = val
+		case "StashTag":
+			s.StashTag = val
 		case "Time":
 			s.CreatedAt, _ = time.Parse(time.RFC3339, val)
 		case "Message":
@@ -187,10 +186,23 @@ func parseSnapshot(data string) *Snapshot {
 }
 
 // Rollback restores a snapshot by applying the matching git stash.
+// It matches by the unique StashTag embedded in the stash message,
+// not by a generic string, to avoid restoring the wrong stash entry.
 func (m *Manager) Rollback(snapshotID string, repoPath string) error {
 	cleanPath, err := validateRepoPath(repoPath)
 	if err != nil {
 		return err
+	}
+
+	// Look up the snapshot metadata to get its unique StashTag
+	snap := m.findSnapshotByID(snapshotID)
+	if snap == nil {
+		return fmt.Errorf("snapshot %q not found in metadata", snapshotID)
+	}
+	searchTag := snap.StashTag
+	if searchTag == "" {
+		// Fallback for old snapshots without StashTag — use the snapshot ID
+		searchTag = snapshotID
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -205,35 +217,54 @@ func (m *Manager) Rollback(snapshotID string, repoPath string) error {
 
 	lines := strings.Split(string(out), "\n")
 	for _, line := range lines {
-		if strings.Contains(line, snapshotID) || strings.Contains(line, "vibe-dashboard: snapshot") {
-			colonIdx := strings.IndexByte(line, ':')
-			if colonIdx < 0 {
-				continue
-			}
-			stashRef := strings.TrimSpace(line[:colonIdx])
-
-			applyCtx, applyCancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer applyCancel()
-			applyCmd := exec.CommandContext(applyCtx, "git", "stash", "apply", stashRef)
-			applyCmd.Dir = cleanPath
-			output, err := applyCmd.CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("git stash apply %s: %w (output: %s)", stashRef, err, strings.TrimSpace(string(output)))
-			}
-			return nil
+		if !strings.Contains(line, searchTag) {
+			continue
 		}
+		// Extract stash ref: "stash@{0}: ..." → "stash@{0}"
+		colonIdx := strings.Index(line, ": ")
+		if colonIdx < 0 {
+			continue
+		}
+		stashRef := strings.TrimSpace(line[:colonIdx])
+
+		applyCtx, applyCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer applyCancel()
+		applyCmd := exec.CommandContext(applyCtx, "git", "stash", "apply", stashRef)
+		applyCmd.Dir = cleanPath
+		output, err := applyCmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("git stash apply %s: %w (output: %s)", stashRef, err, strings.TrimSpace(string(output)))
+		}
+		return nil
 	}
 
-	return fmt.Errorf("snapshot %q not found in git stash list", snapshotID)
+	return fmt.Errorf("snapshot %q not found in git stash list (tag: %s)", snapshotID, searchTag)
+}
+
+// findSnapshotByID reads snapshot metadata from disk.
+func (m *Manager) findSnapshotByID(snapshotID string) *Snapshot {
+	// Sanitize
+	if strings.Contains(snapshotID, "/") || strings.Contains(snapshotID, "..") {
+		return nil
+	}
+	snapPath := filepath.Join(m.snapshotsDir, snapshotID+".snap")
+	data, err := os.ReadFile(snapPath)
+	if err != nil {
+		return nil
+	}
+	return parseSnapshot(string(data))
 }
 
 // DeleteSnapshot removes a snapshot metadata file.
 func (m *Manager) DeleteSnapshot(snapshotID string) error {
 	// Sanitize to prevent path traversal
-	if strings.Contains(snapshotID, "/") || strings.Contains(snapshotID, "..") {
+	if strings.Contains(snapshotID, "/") || strings.Contains(snapshotID, "..") || strings.Contains(snapshotID, "\\") {
 		return fmt.Errorf("invalid snapshot ID")
 	}
 	snapPath := filepath.Join(m.snapshotsDir, snapshotID+".snap")
+	if _, err := os.Stat(snapPath); os.IsNotExist(err) {
+		return fmt.Errorf("snapshot %q not found", snapshotID)
+	}
 	return os.Remove(snapPath)
 }
 

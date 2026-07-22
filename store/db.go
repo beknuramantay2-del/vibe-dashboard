@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -16,6 +17,7 @@ import (
 
 // Store persists aggregated session data to a local SQLite database.
 type Store struct {
+	mu sync.RWMutex
 	db *sql.DB
 }
 
@@ -76,13 +78,6 @@ func (s *Store) migrate() error {
 			diff_content TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
-		`CREATE TABLE IF NOT EXISTS budget_alerts (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			threshold_cents INTEGER NOT NULL,
-			action TEXT DEFAULT 'warn',
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project)`,
 		`CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time)`,
@@ -97,9 +92,22 @@ func (s *Store) migrate() error {
 	return nil
 }
 
+func (s *Store) getDB() (*sql.DB, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.db == nil {
+		return nil, ErrClosed
+	}
+	return s.db, nil
+}
+
 // SaveSession upserts a session record.
 func (s *Store) SaveSession(ses sources.Session) error {
-	_, err := s.db.Exec(`
+	db, err := s.getDB()
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`
 		INSERT INTO sessions (id, agent, project, status, start_time, duration_seconds, cost, input_tokens, output_tokens, cache_tokens, cache_hit_rate)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
@@ -118,7 +126,11 @@ func (s *Store) SaveSession(ses sources.Session) error {
 
 // SaveFileChanges saves a batch of file changes for a session.
 func (s *Store) SaveFileChanges(sessionID string, changes []sources.FileChange) error {
-	tx, err := s.db.Begin()
+	db, err := s.getDB()
+	if err != nil {
+		return err
+	}
+	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
@@ -143,20 +155,23 @@ func (s *Store) SaveFileChanges(sessionID string, changes []sources.FileChange) 
 
 // GetSessions retrieves sessions filtered by agent, with a limit.
 func (s *Store) GetSessions(agent string, limit int) ([]sources.Session, error) {
+	db, err := s.getDB()
+	if err != nil {
+		return nil, err
+	}
 	if limit <= 0 {
 		limit = 50
 	}
 
 	var rows *sql.Rows
-	var err error
 	if agent != "" {
-		rows, err = s.db.Query(`
+		rows, err = db.Query(`
 			SELECT id, agent, project, status, start_time, duration_seconds,
 			       cost, input_tokens, output_tokens, cache_tokens, cache_hit_rate
 			FROM sessions WHERE agent = ? ORDER BY start_time DESC LIMIT ?
 		`, agent, limit)
 	} else {
-		rows, err = s.db.Query(`
+		rows, err = db.Query(`
 			SELECT id, agent, project, status, start_time, duration_seconds,
 			       cost, input_tokens, output_tokens, cache_tokens, cache_hit_rate
 			FROM sessions ORDER BY start_time DESC LIMIT ?
@@ -200,8 +215,9 @@ func (s *Store) GetSessions(agent string, limit int) ([]sources.Session, error) 
 
 // GetAggregatedCost returns total cost, optionally filtered by hours and agent.
 func (s *Store) GetAggregatedCost(hours int, agent string) (float64, error) {
-	if s.db == nil {
-		return 0, errors.New("store not initialized")
+	db, err := s.getDB()
+	if err != nil {
+		return 0, err
 	}
 
 	var query string
@@ -222,7 +238,7 @@ func (s *Store) GetAggregatedCost(hours int, agent string) (float64, error) {
 	}
 
 	var total float64
-	if err := s.db.QueryRow(query, args...).Scan(&total); err != nil {
+	if err := db.QueryRow(query, args...).Scan(&total); err != nil {
 		return 0, err
 	}
 	return total, nil
@@ -233,6 +249,8 @@ var ErrClosed = errors.New("store already closed")
 
 // Close closes the underlying database connection.
 func (s *Store) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.db == nil {
 		return ErrClosed
 	}

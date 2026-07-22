@@ -9,8 +9,13 @@
   let repoPath = ''
   let killing = false
   let snapping = false
+  let lastLoadedId = null
 
-  $: if (session) loadChanges()
+  // Only reload file changes when the session ID actually changes, not on every reactive update
+  $: if (session && session.id !== lastLoadedId) {
+    lastLoadedId = session.id
+    loadChanges()
+  }
 
   async function loadChanges() {
     if (!session) return

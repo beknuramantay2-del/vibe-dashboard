@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -48,21 +47,21 @@ func NewCodexReader() (*CodexReader, error) {
 func (c *CodexReader) Name() string { return "Codex CLI" }
 
 // Refresh scans all JSONL files under the Codex logs directory.
+// It fully re-parses from scratch to avoid double-counting tokens/cost.
 func (c *CodexReader) Refresh() error {
-	files, err := filepath.Glob(filepath.Join(c.baseDir, "**", "*.jsonl"))
+	files, err := findJSONLFiles(c.baseDir)
 	if err != nil {
-		return fmt.Errorf("glob codex logs: %w", err)
+		return fmt.Errorf("find codex logs: %w", err)
 	}
-	deeper, _ := filepath.Glob(filepath.Join(c.baseDir, "*.jsonl"))
-	files = append(files, deeper...)
 
-	seen := make(map[string]bool, len(files))
+	newSessions := make(map[string]*Session)
 	for _, f := range files {
-		if !seen[f] {
-			seen[f] = true
-			c.parseJSONL(f)
-		}
+		parseCodexJSONL(f, newSessions)
 	}
+
+	c.mu.Lock()
+	c.sessions = newSessions
+	c.mu.Unlock()
 	return nil
 }
 
@@ -102,23 +101,11 @@ func (c *CodexReader) KillSession(id string) error {
 	pid := s.PID
 	c.mu.RUnlock()
 
-	if pid <= 0 {
-		return fmt.Errorf("no valid PID for session %q", id)
-	}
-
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return fmt.Errorf("process %d not found: %w", pid, err)
-	}
-
-	if err := proc.Signal(syscall.Signal(0)); err != nil {
-		return fmt.Errorf("process %d not running: %w", pid, err)
-	}
-
-	return proc.Signal(os.Interrupt)
+	return killProcessByPID(pid, id)
 }
 
-func (c *CodexReader) parseJSONL(path string) {
+// parseCodexJSONL parses a single JSONL file into the sessions map.
+func parseCodexJSONL(path string, sessions map[string]*Session) {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return
@@ -153,8 +140,7 @@ func (c *CodexReader) parseJSONL(path string) {
 			continue
 		}
 
-		c.mu.Lock()
-		s, exists := c.sessions[entry.ID]
+		s, exists := sessions[entry.ID]
 		if !exists {
 			s = &Session{
 				ID:        entry.ID,
@@ -162,7 +148,7 @@ func (c *CodexReader) parseJSONL(path string) {
 				Status:    "active",
 				StartTime: entry.Timestamp,
 			}
-			c.sessions[entry.ID] = s
+			sessions[entry.ID] = s
 		}
 		if entry.Project != "" {
 			s.Project = entry.Project
@@ -182,7 +168,6 @@ func (c *CodexReader) parseJSONL(path string) {
 		} else if entry.Status != "" {
 			s.Status = "active"
 		}
-		c.mu.Unlock()
 		entries++
 	}
 

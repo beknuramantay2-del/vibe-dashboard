@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -59,23 +58,22 @@ func NewClaudeReader() (*ClaudeReader, error) {
 func (c *ClaudeReader) Name() string { return "Claude Code" }
 
 // Refresh scans all JSONL files under the Claude projects directory.
+// It fully re-parses from scratch to avoid double-counting tokens/cost.
 func (c *ClaudeReader) Refresh() error {
-	files, err := filepath.Glob(filepath.Join(c.baseDir, "**", "*.jsonl"))
+	files, err := findJSONLFiles(c.baseDir)
 	if err != nil {
-		return fmt.Errorf("glob claude logs: %w", err)
+		return fmt.Errorf("find claude logs: %w", err)
 	}
-	// Also try one level deeper
-	deeper, _ := filepath.Glob(filepath.Join(c.baseDir, "**", "**", "*.jsonl"))
-	files = append(files, deeper...)
 
-	// Deduplicate
-	seen := make(map[string]bool, len(files))
+	// Build fresh session map to avoid double-counting on re-parse
+	newSessions := make(map[string]*Session)
 	for _, f := range files {
-		if !seen[f] {
-			seen[f] = true
-			c.parseJSONL(f)
-		}
+		parseClaudeJSONL(f, newSessions)
 	}
+
+	c.mu.Lock()
+	c.sessions = newSessions
+	c.mu.Unlock()
 	return nil
 }
 
@@ -117,24 +115,11 @@ func (c *ClaudeReader) KillSession(id string) error {
 	pid := s.PID
 	c.mu.RUnlock()
 
-	if pid <= 0 {
-		return fmt.Errorf("no valid PID for session %q", id)
-	}
-
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return fmt.Errorf("process %d not found: %w", pid, err)
-	}
-
-	// Verify the process is still running before sending signal
-	if err := proc.Signal(syscall.Signal(0)); err != nil {
-		return fmt.Errorf("process %d not running: %w", pid, err)
-	}
-
-	return proc.Signal(os.Interrupt)
+	return killProcessByPID(pid, id)
 }
 
-func (c *ClaudeReader) parseJSONL(path string) {
+// parseClaudeJSONL parses a single JSONL file into the sessions map.
+func parseClaudeJSONL(path string, sessions map[string]*Session) {
 	fi, err := os.Stat(path)
 	if err != nil {
 		return
@@ -169,8 +154,7 @@ func (c *ClaudeReader) parseJSONL(path string) {
 			continue
 		}
 
-		c.mu.Lock()
-		s, exists := c.sessions[entry.SessionID]
+		s, exists := sessions[entry.SessionID]
 		if !exists {
 			s = &Session{
 				ID:        entry.SessionID,
@@ -178,7 +162,7 @@ func (c *ClaudeReader) parseJSONL(path string) {
 				Status:    "active",
 				StartTime: entry.Timestamp,
 			}
-			c.sessions[entry.SessionID] = s
+			sessions[entry.SessionID] = s
 		}
 		if entry.Project != "" {
 			s.Project = entry.Project
@@ -199,7 +183,6 @@ func (c *ClaudeReader) parseJSONL(path string) {
 			s.Status = "completed"
 			s.EndTime = entry.Timestamp
 		}
-		c.mu.Unlock()
 		entries++
 	}
 

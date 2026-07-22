@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -74,9 +73,7 @@ func (o *OpenCodeReader) Refresh() error {
 	}
 	defer rows.Close()
 
-	o.mu.Lock()
-	defer o.mu.Unlock()
-
+	newSessions := make(map[string]*Session)
 	for rows.Next() {
 		var s Session
 		var startTime string
@@ -90,8 +87,13 @@ func (o *OpenCodeReader) Refresh() error {
 		s.StartTime, _ = time.Parse(time.RFC3339, startTime)
 		s.ComputeCacheHitRate()
 		s.ComputeDuration()
-		o.sessions[s.ID] = &s
+		newSessions[s.ID] = &s
 	}
+
+	o.mu.Lock()
+	o.sessions = newSessions
+	o.mu.Unlock()
+
 	return rows.Err()
 }
 
@@ -146,18 +148,13 @@ func (o *OpenCodeReader) KillSession(id string) error {
 	if !ok {
 		return fmt.Errorf("session %q not found", id)
 	}
-	if s.PID <= 0 {
-		return fmt.Errorf("no valid PID for session %q", id)
-	}
+	return killProcessByPID(s.PID, id)
+}
 
-	proc, err := os.FindProcess(s.PID)
-	if err != nil {
-		return fmt.Errorf("process %d not found: %w", s.PID, err)
+// Close closes the underlying database connection.
+func (o *OpenCodeReader) Close() error {
+	if o.db != nil {
+		return o.db.Close()
 	}
-
-	if err := proc.Signal(syscall.Signal(0)); err != nil {
-		return fmt.Errorf("process %d not running: %w", s.PID, err)
-	}
-
-	return proc.Signal(os.Interrupt)
+	return nil
 }

@@ -20,6 +20,7 @@ type Session struct {
 }
 
 // ComputeCacheHitRate recalculates the cache hit rate from token counts.
+// Rate = cache_tokens / (input_tokens + cache_tokens) * 100
 func (s *Session) ComputeCacheHitRate() {
 	total := s.InputTokens + s.CacheTokens
 	if total > 0 {
@@ -36,7 +37,9 @@ func (s *Session) ComputeDuration() {
 			return
 		}
 	}
-	s.Duration = time.Since(s.StartTime)
+	if !s.StartTime.IsZero() {
+		s.Duration = time.Since(s.StartTime)
+	}
 }
 
 // FileChange represents a file modified during a session.
@@ -67,4 +70,9 @@ type SourceReader interface {
 
 	// KillSession sends an interrupt signal to the session's process.
 	KillSession(id string) error
+}
+
+// Closeable is an optional interface for readers that hold resources (DB connections, etc.).
+type Closeable interface {
+	Close() error
 }

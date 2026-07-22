@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -78,12 +79,21 @@ func (a *App) startup(ctx context.Context) {
 	if err := os.MkdirAll(logDir, 0700); err != nil {
 		log.Printf("log dir: %v", err)
 	}
+
+	// Log rotation: truncate if > 10MB
 	logPath := filepath.Join(logDir, "vibe-desktop.log")
+	if fi, err := os.Stat(logPath); err == nil && fi.Size() > 10*1024*1024 {
+		// Keep last 1MB by truncating
+		truncateLogFile(logPath, 1024*1024)
+	}
+
 	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err == nil {
-		a.logFile = logFile // Store handle — closed in shutdown
+		a.logFile = logFile // Stored — closed in shutdown
 		log.SetOutput(logFile)
 	}
+
+	log.Println("=== vibe-dashboard starting ===")
 
 	// Init store
 	a.store, err = store.NewStore()
@@ -121,11 +131,20 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
-	log.Println("shutting down")
+	log.Println("=== vibe-dashboard shutting down ===")
 
 	// Cancel the poll loop
 	if a.cancel != nil {
 		a.cancel()
+	}
+
+	// Close any readers that implement Closeable (e.g., OpenCode DB)
+	for _, r := range a.readers {
+		if c, ok := r.(sources.Closeable); ok {
+			if err := c.Close(); err != nil {
+				log.Printf("close %s: %v", r.Name(), err)
+			}
+		}
 	}
 
 	// Close the store
@@ -198,32 +217,18 @@ func toSessionDTOs(sessions []sources.Session) []SessionDTO {
 			InputTokens:  s.InputTokens,
 			OutputTokens: s.OutputTokens,
 			CacheHitRate: s.CacheHitRate,
-			Duration:     formatDuration(s.Duration),
-			StartTime:    s.StartTime.Format("15:04:05"),
+			Duration:     s.Duration.Round(time.Second).String(),
+			StartTime:    s.StartTime.Format("Jan 02 15:04"),
 			PID:          s.PID,
 		}
 	}
 
 	// Sort by start time descending (newest first)
 	sort.Slice(dtos, func(i, j int) bool {
-		return dtos[i].StartTime > dtos[j].StartTime
+		return sessions[i].StartTime.After(sessions[j].StartTime)
 	})
 
 	return dtos
-}
-
-func formatDuration(d time.Duration) string {
-	d = d.Round(time.Second)
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	s := int(d.Seconds()) % 60
-	if h > 0 {
-		return time.Duration(d).String()
-	}
-	if m > 0 {
-		return time.Duration(time.Duration(m)*time.Minute + time.Duration(s)*time.Second).String()
-	}
-	return time.Duration(time.Duration(s) * time.Second).String()
 }
 
 // --- Frontend bindings ---
@@ -363,4 +368,47 @@ func (a *App) GetCostByHours(hours int) float64 {
 	}
 	total, _ := a.store.GetAggregatedCost(hours, "")
 	return total
+}
+
+// --- Helpers ---
+
+// truncateLogFile keeps the last `keepBytes` of a log file.
+func truncateLogFile(path string, keepBytes int64) {
+	fi, err := os.Stat(path)
+	if err != nil || fi.Size() <= keepBytes {
+		return
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+
+	// Seek to (size - keepBytes)
+	offset := fi.Size() - keepBytes
+	if _, err := f.Seek(offset, 0); err != nil {
+		f.Close()
+		return
+	}
+
+	data := make([]byte, keepBytes)
+	n, err := f.Read(data)
+	f.Close()
+	if err != nil {
+		return
+	}
+
+	// Find first newline to start on a clean line
+	start := 0
+	for i := 0; i < n; i++ {
+		if data[i] == '\n' {
+			start = i + 1
+			break
+		}
+	}
+
+	header := fmt.Sprintf("=== Log truncated at %s (kept last %d bytes) ===\n",
+		time.Now().Format(time.RFC3339), keepBytes)
+
+	os.WriteFile(path, append([]byte(header), data[start:n]...), 0600)
 }
