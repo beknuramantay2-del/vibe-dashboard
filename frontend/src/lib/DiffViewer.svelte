@@ -38,12 +38,12 @@
 
   <div class="inputs">
     <div class="input-group">
-      <label>Before</label>
-      <textarea bind:value={before} on:paste={(e) => handlePaste(e, 'before')} placeholder="Paste original content..." class="editor"></textarea>
+      <label for="diff-before">Before</label>
+      <textarea id="diff-before" bind:value={before} on:paste={(e) => handlePaste(e, 'before')} placeholder="Paste original content..." class="editor"></textarea>
     </div>
     <div class="input-group">
-      <label>After</label>
-      <textarea bind:value={after} on:paste={(e) => handlePaste(e, 'after')} placeholder="Paste new content..." class="editor"></textarea>
+      <label for="diff-after">After</label>
+      <textarea id="diff-after" bind:value={after} on:paste={(e) => handlePaste(e, 'after')} placeholder="Paste new content..." class="editor"></textarea>
     </div>
   </div>
 
@@ -71,19 +71,19 @@
   .header h2 { font-size: 20px; color: var(--text); }
   .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
   .input-group label { display: block; font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-  .editor { width: 100%; height: 180px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; resize: vertical; outline: none; }
-  .editor:focus { border-color: var(--accent); }
+  .editor { width: 100%; height: 180px; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg2); color: var(--text); font-family: var(--font-mono); font-size: 12px; resize: vertical; outline: none; transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out); }
+  .editor:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
   .output { flex: 1; display: flex; flex-direction: column; }
-  .output-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg2); border-radius: 8px 8px 0 0; border: 1px solid var(--border); font-size: 12px; color: var(--text2); }
+  .output-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg2); border-radius: var(--radius-md) var(--radius-md) 0 0; border: 1px solid var(--border); font-size: 12px; color: var(--text2); }
   .stats { display: flex; gap: 12px; }
   .add-count { color: var(--green); font-weight: 600; }
   .del-count { color: var(--red); font-weight: 600; }
-  .diff-content { flex: 1; overflow-y: auto; background: var(--bg2); border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; padding: 8px 0; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; }
+  .diff-content { flex: 1; overflow-y: auto; background: var(--bg2); border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--radius-md) var(--radius-md); padding: 8px 0; font-family: var(--font-mono); font-size: 12px; }
   .diff-line { padding: 2px 12px; white-space: pre; }
   .diff-line code { font-family: inherit; }
-  .diff-line.add { background: rgba(0, 184, 148, 0.1); }
+  .diff-line.add { background: rgba(34, 197, 94, 0.1); }
   .diff-line.add code { color: var(--green); }
-  .diff-line.remove { background: rgba(225, 112, 85, 0.1); }
+  .diff-line.remove { background: rgba(239, 68, 68, 0.1); }
   .diff-line.remove code { color: var(--red); }
   .diff-line.equal code { color: var(--text); }
   .diff-line.empty { padding: 20px; text-align: center; }

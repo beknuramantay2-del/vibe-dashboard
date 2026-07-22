@@ -1,3 +1,44 @@
+:root {
+  --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', monospace;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html[data-theme='dark'] {
+  --bg: #0a0a0f;
+  --bg2: #12121a;
+  --bg3: #1e1e2a;
+  --text: #e4e4e7;
+  --text2: #a1a1aa;
+  --accent: #3b82f6;
+  --border: #27272a;
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #eab308;
+}
+
+html[data-theme='light'] {
+  --bg: #fafafa;
+  --bg2: #f4f4f5;
+  --bg3: #e4e4e7;
+  --text: #18181b;
+  --text2: #71717a;
+  --accent: #3b82f6;
+  --border: #d4d4d8;
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #eab308;
+}
+
+html {
+  transition: background-color 0.3s var(--ease-out);
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -5,6 +46,10 @@ html, body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s var(--ease-out), color 0.3s var(--ease-out);
 }
 
 #app {
@@ -16,6 +61,11 @@ html, body {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
 }
 
 ::-webkit-scrollbar {
@@ -31,28 +81,9 @@ html, body {
   border-radius: 3px;
 }
 
-html[data-theme='dark'] {
-  --bg: #0f0f14;
-  --bg2: #1a1a24;
-  --bg3: #252535;
-  --text: #e0e0e0;
-  --text2: #999;
-  --accent: #6c5ce7;
-  --border: #2a2a3a;
-  --green: #00b894;
-  --red: #e17055;
-  --yellow: #fdcb6e;
-}
-
-html[data-theme='light'] {
-  --bg: #ffffff;
-  --bg2: #f5f5f8;
-  --bg3: #e8e8ee;
-  --text: #1a1a2e;
-  --text2: #666;
-  --accent: #6c5ce7;
-  --border: #d0d0da;
-  --green: #00b894;
-  --red: #e17055;
-  --yellow: #fdcb6e;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

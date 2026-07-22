@@ -3,7 +3,6 @@
   import { GetFileChanges, KillSession, CreateSnapshot } from '../../wailsjs/go/main/App'
 
   export let session = null
-  export let agents = []
 
   let fileChanges = []
   let repoPath = ''
@@ -85,27 +84,30 @@
   .detail { max-width: 800px; }
   .header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
   .header h2 { font-size: 20px; color: var(--text); }
-  .agent-badge { padding: 4px 10px; border-radius: 6px; font-size: 12px; color: #fff; font-weight: 600; }
+  .agent-badge { padding: 4px 10px; border-radius: var(--radius-sm); font-size: 12px; color: #fff; font-weight: 600; }
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; }
-  .stat { background: var(--bg2); border-radius: 10px; padding: 14px; border: 1px solid var(--border); }
+  .stat { background: var(--bg2); border-radius: var(--radius-lg); padding: 14px; border: 1px solid var(--border); transition: background-color 0.3s var(--ease-out), border-color 0.3s var(--ease-out); }
   .stat-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
   .stat-value { font-size: 16px; font-weight: 600; color: var(--text); }
-  .stat-value.mono { font-family: monospace; font-size: 13px; }
+  .stat-value.mono { font-family: var(--font-mono); font-size: 13px; }
   .stat-value.accent { color: var(--accent); }
   .section { margin-bottom: 24px; }
   .section h3 { font-size: 14px; color: var(--text); margin-bottom: 12px; }
-  .file-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--bg2); border-radius: 6px; margin-bottom: 4px; font-size: 13px; }
-  .file-path { flex: 1; font-family: monospace; color: var(--text); }
-  .file-add { color: var(--green); font-family: monospace; }
-  .file-del { color: var(--red); font-family: monospace; }
+  .file-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: var(--bg2); border-radius: var(--radius-md); margin-bottom: 4px; font-size: 13px; transition: background-color 0.2s var(--ease-out); }
+  .file-row:hover { background: var(--bg3); }
+  .file-path { flex: 1; font-family: var(--font-mono); color: var(--text); }
+  .file-add { color: var(--green); font-family: var(--font-mono); }
+  .file-del { color: var(--red); font-family: var(--font-mono); }
   .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .btn { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); font-size: 13px; cursor: pointer; }
-  .btn:hover { background: var(--bg3); }
+  .btn { padding: 8px 16px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg2); color: var(--text); font-size: 13px; cursor: pointer; transition: all 0.2s var(--ease-out); }
+  .btn:hover { background: var(--bg3); border-color: var(--accent); }
+  .btn:active { transform: scale(0.97); }
   .btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
-  .btn-danger:hover { opacity: 0.85; }
+  .btn-danger:hover { background: #dc2626; border-color: #dc2626; }
   .snapshot-row { display: flex; gap: 8px; flex: 1; }
-  .repo-input { flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg2); color: var(--text); font-size: 13px; outline: none; }
-  .result { margin-top: 12px; padding: 8px 12px; border-radius: 6px; background: var(--bg3); color: var(--red); font-size: 13px; }
+  .repo-input { flex: 1; padding: 8px 12px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg2); color: var(--text); font-size: 13px; outline: none; transition: border-color 0.2s var(--ease-out), box-shadow 0.2s var(--ease-out); }
+  .repo-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+  .result { margin-top: 12px; padding: 8px 12px; border-radius: var(--radius-sm); background: var(--bg3); color: var(--red); font-size: 13px; }
   .result.success { color: var(--green); }
   .empty, .empty-small { padding: 40px 20px; text-align: center; color: var(--text2); font-size: 14px; }
   .empty-small { padding: 20px; font-size: 13px; }

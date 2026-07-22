@@ -1,4 +1,6 @@
 <script>
+  import '@fontsource/geist-sans'
+  import '@fontsource/geist-mono'
   import { onMount, onDestroy } from 'svelte'
   import Sidebar from './lib/Sidebar.svelte'
   import SessionList from './lib/SessionList.svelte'
@@ -48,7 +50,7 @@
     {#if selectedTab === 'sessions'}
       <SessionList {sessions} onSelect={selectSession} />
     {:else if selectedTab === 'detail' && selectedSession}
-      <SessionDetail session={selectedSession} {agents} />
+      <SessionDetail session={selectedSession} />
     {:else if selectedTab === 'diff'}
       <DiffViewer />
     {:else if selectedTab === 'config'}
@@ -63,19 +65,12 @@
     height: 100vh;
     width: 100vw;
     overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-family: var(--font-sans);
   }
   .main-content {
     flex: 1;
     overflow-y: auto;
     padding: 24px;
+    transition: background-color 0.3s var(--ease-out);
   }
-  :global(*) { margin: 0; padding: 0; box-sizing: border-box; }
-  :global(body) { margin: 0; overflow: hidden; }
-  :global(::-webkit-scrollbar) { width: 6px; }
-  :global(::-webkit-scrollbar-track) { background: transparent; }
-  :global(::-webkit-scrollbar-thumb) { background: #555; border-radius: 3px; }
-
-  :global(html[data-theme='dark']) { --bg: #0f0f14; --bg2: #1a1a24; --bg3: #252535; --text: #e0e0e0; --text2: #999; --accent: #6c5ce7; --border: #2a2a3a; --green: #00b894; --red: #e17055; --yellow: #fdcb6e; }
-  :global(html[data-theme='light']) { --bg: #ffffff; --bg2: #f5f5f8; --bg3: #e8e8ee; --text: #1a1a2e; --text2: #666; --accent: #6c5ce7; --border: #d0d0da; --green: #00b894; --red: #e17055; --yellow: #fdcb6e; }
 </style>
