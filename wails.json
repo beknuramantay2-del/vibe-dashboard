@@ -1,0 +1,13 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "vibe-dashboard",
+  "outputfilename": "vibe-wails",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "beknuramantay2-del",
+    "email": "beknuramantay2-del@users.noreply.github.com"
+  }
+}

@@ -1,0 +1,58 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#app {
+  height: 100vh;
+  width: 100vw;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 3px;
+}
+
+html[data-theme='dark'] {
+  --bg: #0f0f14;
+  --bg2: #1a1a24;
+  --bg3: #252535;
+  --text: #e0e0e0;
+  --text2: #999;
+  --accent: #6c5ce7;
+  --border: #2a2a3a;
+  --green: #00b894;
+  --red: #e17055;
+  --yellow: #fdcb6e;
+}
+
+html[data-theme='light'] {
+  --bg: #ffffff;
+  --bg2: #f5f5f8;
+  --bg3: #e8e8ee;
+  --text: #1a1a2e;
+  --text2: #666;
+  --accent: #6c5ce7;
+  --border: #d0d0da;
+  --green: #00b894;
+  --red: #e17055;
+  --yellow: #fdcb6e;
+}

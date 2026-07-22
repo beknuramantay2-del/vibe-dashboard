@@ -26,3 +26,9 @@ Thumbs.db
 # Vibe Dashboard
 vibe-dashboard.log
 ~/.vibe-dashboard/
+
+# Frontend
+frontend/node_modules/
+
+# Wails build
+build/
