@@ -17,48 +17,76 @@ Track sessions, tokens, costs, cache hit rates, file diffs, and rollback changes
 - **Dark/light theme** — Toggle with localStorage persistence
 - **Cross-platform** — Windows, macOS, Linux
 
-## Screenshots
+## Quick Start
 
-_Coming soon_
+### Prerequisites
 
-## Installation
+| Tool | Version | Install |
+|------|---------|---------|
+| Go | 1.25+ | https://go.dev/dl/ |
+| Node.js | 20+ | https://nodejs.org/ |
+| Wails CLI | v2 | `go install github.com/wailsapp/wails/v2/cmd/wails@latest` |
 
-### Download
+**Linux only** — install system dependencies first:
+```bash
+# Ubuntu/Debian
+sudo apt install libgtk-3-dev libwebkit2gtk-4.0-dev
 
-Download the latest release from the [releases page](https://github.com/beknuramantay2-del/vibe-dashboard/releases).
+# Fedora
+sudo dnf install gtk3-devel webkit2gtk4.0-devel
 
-### Build from source
+# Arch
+sudo pacman -S gtk3 webkit2gtk-4.1
+```
 
-Prerequisites: Go 1.25+, Node.js 20+
+**macOS** — Xcode Command Line Tools required:
+```bash
+xcode-select --install
+```
+
+**Windows** — WebView2 runtime (pre-installed on Windows 11, download for Windows 10 from Microsoft).
+
+### Verify setup
+
+```bash
+wails doctor
+```
+
+This checks all dependencies are installed. Fix any issues it reports before building.
+
+### Build & run
 
 ```bash
 git clone https://github.com/beknuramantay2-del/vibe-dashboard.git
 cd vibe-dashboard
 
-# Install Wails CLI
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
-
-# Build
+# Install frontend dependencies + build + compile Go → single binary
 wails build
 
-# Binary is at build/bin/vibe-wails.exe (Windows)
-# or build/bin/vibe-wails (macOS/Linux)
+# Run the binary
+./build/bin/vibe-wails          # Linux/macOS
+.\build\bin\vibe-wails.exe      # Windows
 ```
 
-## Development
+### Development mode (hot-reload)
 
 ```bash
-# Run in development mode with hot-reload
 wails dev
 ```
 
+Opens a desktop window with live-reloading frontend. Backend changes require restart.
+
 ## Data Sources
+
+The app auto-detects installed agents. No configuration needed.
 
 | Agent | Data Source | Detection |
 |-------|-----------|-----------|
 | Claude Code | `~/.claude/projects/**/*.jsonl` | Auto |
 | OpenCode | `~/.opencode/opencode.db` | Auto |
 | Codex CLI | `~/.codex/logs/**/*.jsonl` | Auto |
+
+If no agents are installed, the dashboard opens with an empty session list — install at least one agent to see data.
 
 ## Architecture
 
@@ -70,35 +98,54 @@ vibe-dashboard/
 │   ├── interface.go           # SourceReader interface + Session/FileChange types
 │   ├── claude.go              # Claude Code JSONL parser
 │   ├── opencode.go            # OpenCode SQLite reader
-│   └── codex.go               # Codex CLI JSONL parser
+│   ├── codex.go               # Codex CLI JSONL parser
+│   ├── helpers.go             # Shared utilities (WalkDir, killProcess)
+│   ├── signal_unix.go         # Unix-specific signal handling
+│   └── signal_windows.go      # Windows-specific signal handling
 ├── store/                     # Local SQLite store for aggregation
 │   └── db.go
 ├── rollback/                  # Git stash-based snapshot system
 │   └── snapshot.go
 ├── frontend/                  # Svelte desktop UI
 │   └── src/
-│       ├── App.svelte              # Root layout + state management
-│       ├── style.css               # Global styles + theme variables
-│       └── lib/
-│           ├── Sidebar.svelte      # Navigation + agent list + cost
-│           ├── SessionList.svelte  # Sortable session table with search
-│           ├── SessionDetail.svelte # Stats, file changes, kill, snapshot
-│           ├── DiffViewer.svelte   # Before/after text diff
-│           ├── SnapshotPanel.svelte # Rollback snapshot management
-│           ├── ConfigPanel.svelte  # Theme, agents, data sources
-│           └── Toast.svelte        # Toast notification system
-├── docs/plans/                # Design documents
-├── wails.json                 # Wails configuration
-├── go.mod                     # Go module
-└── Makefile                   # Build commands
+│       ├── App.svelte         # Root layout + state management
+│       ├── main.js            # Svelte mount entry point
+│       └── lib/               # UI components
+└── wails.json                 # Wails build configuration
 ```
 
 ## Storage
 
-All data is stored locally at `~/.vibe-dashboard/`:
-- `vibe.db` — Aggregated session database
-- `snapshots/` — Rollback snapshot metadata
-- `vibe-desktop.log` — Application logs
+All data is stored locally in `~/.vibe-dashboard/`:
+
+| File | Purpose |
+|------|---------|
+| `vibe.db` | Aggregated session data (SQLite) |
+| `snapshots/` | Rollback snapshot metadata |
+| `vibe-desktop.log` | Application logs (auto-rotated at 10MB) |
+
+## Troubleshooting
+
+**`wails: command not found`**
+```bash
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+# Make sure $GOPATH/bin is in your PATH
+export PATH="$PATH:$(go env GOPATH)/bin"
+```
+
+**`wails doctor` reports missing dependencies**
+Install the system packages listed above for your OS.
+
+**Blank window / no sessions**
+- Check `~/.vibe-dashboard/vibe-desktop.log` for errors
+- Ensure at least one agent (Claude Code, OpenCode, or Codex CLI) has been used — the app reads their log files
+
+**Build fails with embed error**
+```bash
+# The frontend must be built first for go:embed to work
+cd frontend && npm install && npm run build && cd ..
+wails build
+```
 
 ## License
 

@@ -86,7 +86,7 @@
   <div class="card">
     <div class="card-title">About</div>
     <div class="card-body">
-      <p><strong>vibe-dashboard</strong> v0.2</p>
+      <p><strong>vibe-dashboard</strong> v0.2.1</p>
       <p>Desktop UI for monitoring AI coding agents — sessions, tokens, costs, cache hit rates, file diffs, and rollback.</p>
       <p>Built with Wails + Svelte + Go.</p>
       <p class="links">

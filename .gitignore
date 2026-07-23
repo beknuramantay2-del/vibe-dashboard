@@ -29,9 +29,12 @@ Thumbs.db
 vibe-dashboard.log
 ~/.vibe-dashboard/
 
-# Frontend build output
-frontend/dist/
+# Frontend
 frontend/node_modules/
+# dist is rebuilt by wails build; only dist/.gitkeep is tracked
+# so //go:embed works on fresh clones
+frontend/dist/*
+!frontend/dist/.gitkeep
 
 # Wails build
 build/

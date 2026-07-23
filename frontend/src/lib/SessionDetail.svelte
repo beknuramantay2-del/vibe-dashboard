@@ -1,5 +1,4 @@
 <script>
-  import { onMount } from 'svelte'
   import { GetFileChanges, KillSession, CreateSnapshot } from '../../wailsjs/go/main/App'
 
   export let session = null
